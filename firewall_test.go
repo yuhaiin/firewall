@@ -252,3 +252,11 @@ func TestExplicitReconciliation(t *testing.T) {
 		t.Fatalf("reconcile missing objects: %+v %v", third, err)
 	}
 }
+
+func TestCanceledInitialization(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := New(ctx, &mockDriver{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("initialization cancellation: %v", err)
+	}
+}

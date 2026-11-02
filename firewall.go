@@ -30,11 +30,17 @@ type subscription struct {
 // New takes ownership of driver on success. On failure the caller still owns it.
 // It probes and inspects existing state without installing or removing rules.
 func New(ctx context.Context, driver Driver) (*Client, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if driver == nil {
 		return nil, fmt.Errorf("%w: nil driver", ErrInvalid)
 	}
 	caps, err := driver.Capabilities(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
 	if !caps.Available {
@@ -108,8 +114,14 @@ func (c *Client) apply(ctx context.Context, p Policy, reconcile bool) (Revision,
 	if err != nil {
 		return Revision{}, c.failure(err)
 	}
-	if !caps.Available || !caps.Permitted {
+	if err := ctx.Err(); err != nil {
+		return Revision{}, err
+	}
+	if !caps.Available {
 		return Revision{}, c.failure(fmt.Errorf("%w: %s", ErrUnavailable, caps.ProbeError))
+	}
+	if !caps.Permitted {
+		return Revision{}, c.failure(fmt.Errorf("%w: %s", ErrPermission, caps.ProbeError))
 	}
 	s, err := Compile(p, caps)
 	if err != nil {

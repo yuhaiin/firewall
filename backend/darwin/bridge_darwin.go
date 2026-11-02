@@ -81,6 +81,9 @@ func (b *Backend) Capabilities(ctx context.Context) (fw.Capabilities, error) {
 	defer b.mu.Unlock()
 	r, err := b.invoke(ctx, request{Command: "probe"})
 	c := features()
+	if canceled := ctx.Err(); canceled != nil {
+		return c, canceled
+	}
 	if err != nil {
 		c.ProbeError = err.Error()
 		return c, nil
