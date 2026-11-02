@@ -274,34 +274,13 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 }
 
 func (b *Backend) deleteOwned() error {
-	tpl := enumTemplate{Provider: &b.provider, Type: 1, ActionMask: 0xffffffff}
-	var h windows.Handle
-	if err := call(filterEnumCreate, uintptr(b.handle), uintptr(unsafe.Pointer(&tpl)), uintptr(unsafe.Pointer(&h))); err != nil {
-		return wrap(err)
-	}
-	defer call(filterEnumDestroy, uintptr(b.handle), uintptr(h))
 	var keys []windows.GUID
-	for {
-		var page **filter
-		var count uint32
-		err := call(filterEnum, uintptr(b.handle), uintptr(h), 128, uintptr(unsafe.Pointer(&page)), uintptr(unsafe.Pointer(&count)))
+	for _, layer := range []windows.GUID{connect4, connect6, receive4, receive6} {
+		page, err := b.filterKeys(layer)
 		if err != nil {
-			return wrap(err)
+			return err
 		}
-		if count == 0 {
-			if page != nil {
-				release(&page)
-			}
-			break
-		}
-		for _, f := range unsafe.Slice(page, count) {
-			if f.Provider == nil || *f.Provider != b.provider || f.Sublayer != b.sublayer {
-				release(&page)
-				return fw.ErrOwnership
-			}
-			keys = append(keys, f.Key)
-		}
-		release(&page)
+		keys = append(keys, page...)
 	}
 	for _, k := range keys {
 		if err := call(filterDelete, uintptr(b.handle), uintptr(unsafe.Pointer(&k))); err != nil {
@@ -312,6 +291,45 @@ func (b *Backend) deleteOwned() error {
 		return wrap(err)
 	}
 	return wrap(call(providerDelete, uintptr(b.handle), uintptr(unsafe.Pointer(&b.provider))))
+}
+
+func (b *Backend) filterKeys(layer windows.GUID) ([]windows.GUID, error) {
+	// A non-nil enumeration template requires a real layer key; zero is not
+	// a wildcard. Scope each enumeration by both layer and provider.
+	tpl := enumTemplate{Provider: &b.provider, Layer: layer, Type: 1, ActionMask: 0xffffffff}
+	var h windows.Handle
+	if err := call(filterEnumCreate, uintptr(b.handle), uintptr(unsafe.Pointer(&tpl)), uintptr(unsafe.Pointer(&h))); err != nil {
+		return nil, wrap(err)
+	}
+	defer call(filterEnumDestroy, uintptr(b.handle), uintptr(h))
+	var keys []windows.GUID
+	for {
+		var page **filter
+		var count uint32
+		err := call(filterEnum, uintptr(b.handle), uintptr(h), 128, uintptr(unsafe.Pointer(&page)), uintptr(unsafe.Pointer(&count)))
+		if err != nil {
+			return nil, wrap(err)
+		}
+		if count == 0 {
+			if page != nil {
+				release(&page)
+			}
+			break
+		}
+		for _, f := range unsafe.Slice(page, count) {
+			if f.Provider == nil || *f.Provider != b.provider || f.Sublayer != b.sublayer {
+				release(&page)
+				return nil, fw.ErrOwnership
+			}
+			keys = append(keys, f.Key)
+			if len(keys) > 200000 {
+				release(&page)
+				return nil, fmt.Errorf("%w: owned filter limit", fw.ErrInvalid)
+			}
+		}
+		release(&page)
+	}
+	return keys, nil
 }
 
 // Remove explicitly removes owned filters, sublayer and provider in one transaction.

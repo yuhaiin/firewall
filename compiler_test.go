@@ -209,3 +209,25 @@ func BenchmarkDiff(b *testing.B) {
 		})
 	}
 }
+
+func TestZonesAndExpansionBudget(t *testing.T) {
+	a, b := testPolicy(), testPolicy()
+	a.Zones = []Zone{{Name: "lan", When: Is(Match{Field: DestinationPrefix, Prefix: netip.MustParsePrefix("10.0.0.0/8")})}}
+	b.Zones = []Zone{{Name: "lan", When: Is(Match{Field: DestinationPrefix, Prefix: netip.MustParsePrefix("192.168.0.0/16")})}}
+	a.Rules[0].When = ZoneCondition("lan")
+	b.Rules[0].When = ZoneCondition("lan")
+	if !Diff(a, b).ZonesChanged {
+		t.Fatal("zone-only change omitted from diff")
+	}
+	if _, err := Compile(a, testCapabilities()); err != nil {
+		t.Fatal(err)
+	}
+	var terms []Condition
+	for range 16 {
+		terms = append(terms, Any(Is(Match{Field: Protocol, Number: 6}), Is(Match{Field: Protocol, Number: 17})))
+	}
+	a.Rules[0].When = All(terms...)
+	if _, err := Compile(a, testCapabilities()); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("expansion budget: %v", err)
+	}
+}

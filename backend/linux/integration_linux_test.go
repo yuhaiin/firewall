@@ -197,6 +197,34 @@ func TestKernelPolicies(t *testing.T) {
 		t.Fatal(err)
 	}
 	// The native batch must roll back even after queued deletion of our table.
+	// External deletion of a single blocking rule must be repairable even if
+	// its ownership metadata was left untouched.
+	p.Rules = []fw.Rule{portRule("repair", fw.Outbound, 6, 65000)}
+	if _, err = c.Apply(t.Context(), p); err != nil {
+		t.Fatal(err)
+	}
+	drift := &nftables.Conn{}
+	nativeRules, err := drift.GetRules(b.table, &nftables.Chain{Table: b.table, Name: "outbound"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = drift.DelRule(nativeRules[0]); err != nil {
+		t.Fatal(err)
+	}
+	if err = drift.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = c.Reconcile(t.Context(), p); err != nil {
+		t.Fatal(err)
+	}
+	nativeRules, err = drift.GetRules(b.table, &nftables.Chain{Table: b.table, Name: "outbound"})
+	if err != nil || len(nativeRules) != 2 {
+		t.Fatalf("reconciled rules: %d %v", len(nativeRules), err)
+	}
+	p.Rules = nil
+	if _, err = c.Apply(t.Context(), p); err != nil {
+		t.Fatal(err)
+	}
 	before, err := c.Current(t.Context())
 	if err != nil {
 		t.Fatal(err)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"testing"
 )
 
@@ -213,11 +214,41 @@ func BenchmarkConcurrentReadsUpdates(b *testing.B) {
 	p := testPolicy()
 	c.Apply(b.Context(), p)
 	b.ReportAllocs()
+	var operations atomic.Uint64
 	b.RunParallel(func(pb *testing.PB) {
 		for pb.Next() {
+			if n := operations.Add(1); n%16 == 0 {
+				p := testPolicy()
+				p.Rules[0].Priority = int32(n)
+				if _, err := c.Apply(b.Context(), p); err != nil {
+					b.Error(err)
+				}
+				continue
+			}
 			if _, err := c.Current(b.Context()); err != nil {
 				b.Fatal(err)
 			}
 		}
 	})
+}
+
+func TestExplicitReconciliation(t *testing.T) {
+	c, d := newTestClient(t)
+	p := testPolicy()
+	first, err := c.Apply(t.Context(), p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := c.Reconcile(t.Context(), p)
+	if err != nil || second.Generation != first.Generation+1 {
+		t.Fatalf("forced replacement: %+v %v", second, err)
+	}
+	d.state = NativeState{} // External native object deletion.
+	if _, err = c.Apply(t.Context(), p); !errors.Is(err, ErrDrift) {
+		t.Fatal(err)
+	}
+	third, err := c.Reconcile(t.Context(), p)
+	if err != nil || third.Generation != second.Generation+1 || !d.state.Active {
+		t.Fatalf("reconcile missing objects: %+v %v", third, err)
+	}
 }
