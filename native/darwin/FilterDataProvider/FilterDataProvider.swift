@@ -69,18 +69,6 @@ final class FilterDataProvider: NEFilterDataProvider, NSXPCListenerDelegate, Fir
         }
     }
 
-    // Framework notifications and control IPC reload the same immutable format.
-    // A corrupt replacement keeps the last valid program. Restart with corrupt
-    // storage fails provider startup, rather than silently allowing all flows.
-    override func handleRulesChanged() {
-        control.async {
-            guard let stored = try? Store.read(), let replacement = try? Program(stored.snapshot) else { return }
-            self.lock.lock()
-            if stored.owner == self.owner { self.program = replacement }
-            self.lock.unlock()
-        }
-    }
-
     override func handleNewFlow(_ flow: NEFilterFlow) -> NEFilterNewFlowVerdict {
         lock.lock(); let active = program; lock.unlock()
         guard let active = active, let socket = flow as? NEFilterSocketFlow else { return .drop() }

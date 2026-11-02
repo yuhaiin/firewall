@@ -216,7 +216,7 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 	if err != nil {
 		return err
 	}
-	if checked.Revision.Digest != s.Revision.Digest || s.Revision.Generation != expected.Generation+1 {
+	if checked.Revision.Digest != s.Revision.Digest || s.Revision.Generation <= expected.Generation {
 		return fw.ErrInvalid
 	}
 	checked.Revision = s.Revision

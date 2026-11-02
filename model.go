@@ -224,6 +224,7 @@ type Driver interface {
 type Firewall interface {
 	Capabilities(context.Context) (Capabilities, error)
 	Apply(context.Context, Policy) (Revision, error)
+	Reconcile(context.Context, Policy) (Revision, error)
 	Current(context.Context) (PolicyState, error)
 	Events(context.Context) (<-chan Event, error)
 	Remove(context.Context) error

@@ -47,6 +47,9 @@ type response struct {
 // New acquires exclusive ownership without activating the extension or filter.
 // Activation and user approval are explicit deployment steps.
 func New(c Config) (*Backend, error) {
+	if os.Geteuid() != 0 {
+		return nil, fmt.Errorf("%w: the signed host must run as root to share the system extension's app-group container", fw.ErrPermission)
+	}
 	if c.Owner == "" || !filepath.IsAbs(c.HostExecutable) || !filepath.IsAbs(c.LockDir) {
 		return nil, fmt.Errorf("%w: absolute host/lock directory and owner required", fw.ErrInvalid)
 	}
@@ -104,7 +107,7 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 	if err != nil {
 		return err
 	}
-	if checked.Revision.Digest != s.Revision.Digest || s.Revision.Generation != expected.Generation+1 {
+	if checked.Revision.Digest != s.Revision.Digest || s.Revision.Generation <= expected.Generation {
 		return fw.ErrInvalid
 	}
 	checked.Revision = s.Revision

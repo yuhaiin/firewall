@@ -83,10 +83,18 @@ final class Host {
             }
             if request.command == "remove" {
                 if !manager.isEnabled && manager.providerConfiguration == nil {
-                    guard request.expected == .absent else { throw PolicyError.drift }; finish(Response())
+                    guard request.expected == .absent else { throw PolicyError.drift }
+                    if let orphan = try? Store.read() {
+                        guard orphan.owner == request.owner else { throw PolicyError.ownership }
+                        try FileManager.default.removeItem(at: Store.url())
+                    }
+                    finish(Response())
                 }
-                rpc("inspect") { response in
-                    guard response.error.isEmpty, response.state.revision == self.request.expected else { finish(response.error.isEmpty ? .failure(PolicyError.drift) : response) }
+                // Explicit removal must remain possible when the provider is
+                // restarting or cannot answer IPC. Compare owned stored state.
+                let stored = try Store.read()
+                guard stored.owner == request.owner else { throw PolicyError.ownership }
+                guard stored.snapshot.revision == request.expected else { throw PolicyError.drift }
                     self.manager.removeFromPreferences { error in
                         if let error = error { finish(.failure(error)) }
                         do { let url = try Store.url(); if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }; finish(Response()) }
@@ -131,18 +139,34 @@ final class Host {
             manager.localizedDescription = "Firewall policies"
             manager.isEnabled = true
             manager.saveToPreferences { error in
-                if let error = error { if let previous = previous { try? Store.write(previous) }; finish(.failure(error)) }
+                if let error = error {
+                    do { try self.rollbackStorage(previous) }
+                    catch { finish(.failure(error)) }
+                    finish(.failure(error))
+                }
                 // Initial activation can need user approval. Retry is bounded;
                 // Apply never returns success without the data-provider reply.
                 DispatchQueue.main.asyncAfter(deadline: .now() + 1, execute: reload)
             }
         } catch { finish(.failure(error)) }
     }
+
+    func rollbackStorage(_ previous: StoredPolicy?) throws {
+        if let previous = previous { try Store.write(previous) }
+        else {
+            let url = try Store.url()
+            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+        }
+    }
 }
 
 func finishResponse(_ response: Response) { finish(response) }
 
 do {
+    // System extensions run as root. App-group containers are per-user, so this
+    // deployment deliberately requires the signed control host to run as root.
+    // A future GUI-user integration needs a separately approved root helper.
+    guard geteuid() == 0 else { throw NSError(domain: "firewall", code: 13, userInfo: [NSLocalizedDescriptionKey: "Run the signed host as root; per-user app-group containers cannot share system policy"]) }
     let input = FileHandle.standardInput.readDataToEndOfFile()
     guard input.count <= 16 * 1024 * 1024 else { throw PolicyError.invalid }
     let request = try JSONDecoder().decode(Request.self, from: input)

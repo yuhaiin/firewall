@@ -303,6 +303,17 @@ func TestKernelConditions(t *testing.T) {
 	if !tcpReachable(dst, false) || tcpReachable(dst, true) {
 		t.Fatal("mark predicate failed")
 	}
+	var addresses []fw.Condition
+	for _, address := range []string{"127.0.0.1/32", "192.0.2.1/32", "198.51.100.1/32", "::1/128"} {
+		addresses = append(addresses, fw.Is(fw.Match{Field: fw.DestinationPrefix, Prefix: netip.MustParsePrefix(address)}))
+	}
+	p.Rules = []fw.Rule{{ID: "set-block", Direction: fw.Outbound, Family: fw.Dual, Action: fw.Drop, When: fw.Any(addresses...)}}
+	if _, err = c.Apply(t.Context(), p); err != nil {
+		t.Fatal(err)
+	}
+	if tcpReachable(dst, false) {
+		t.Fatal("native address set did not block")
+	}
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
 	if _, err = c.Apply(ctx, p); !errors.Is(err, context.Canceled) {

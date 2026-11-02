@@ -56,9 +56,10 @@ func (b *Backend) compile(s fw.Snapshot, a *arena) ([]*filter, error) {
 		}
 		if act == fw.Drop {
 			f.Action.Type = 0x1001
+			f.Flags |= 8 // Clear action-write rights for an explicit security block.
 		}
 		if s.Policy.Lifetime == fw.Persistent {
-			f.Flags = 1
+			f.Flags |= 1
 		}
 		out = append(out, f)
 	}

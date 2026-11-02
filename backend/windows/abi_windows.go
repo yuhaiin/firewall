@@ -101,6 +101,7 @@ var (
 	sublayerGet       = api.NewProc("FwpmSubLayerGetByKey0")
 	sublayerDelete    = api.NewProc("FwpmSubLayerDeleteByKey0")
 	filterAdd         = api.NewProc("FwpmFilterAdd0")
+	filterGet         = api.NewProc("FwpmFilterGetByKey0")
 	filterDelete      = api.NewProc("FwpmFilterDeleteByKey0")
 	filterEnumCreate  = api.NewProc("FwpmFilterCreateEnumHandle0")
 	filterEnum        = api.NewProc("FwpmFilterEnum0")

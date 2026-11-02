@@ -158,7 +158,7 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 	if err != nil {
 		return err
 	}
-	if checked.Revision.Digest != s.Revision.Digest || s.Revision.Generation != expected.Generation+1 {
+	if checked.Revision.Digest != s.Revision.Digest || s.Revision.Generation <= expected.Generation {
 		return fw.ErrInvalid
 	}
 	checked.Revision = s.Revision
@@ -184,6 +184,7 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 		return fmt.Errorf("%w: ownership marker exceeds kernel userdata limit; shorten owner", fw.ErrInvalid)
 	}
 	c.AddRule(&nftables.Rule{Table: b.table, Chain: meta, UserData: data})
+	setID := uint32(0)
 	for _, d := range []fw.Direction{fw.Inbound, fw.Outbound, fw.Forward} {
 		a, ok := s.Policy.Defaults[d]
 		if !ok {
@@ -202,6 +203,25 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 		chain := c.AddChain(&nftables.Chain{Name: string(d), Table: b.table, Hooknum: hook, Priority: new(nftables.ChainPriority(b.config.Priority)), Type: nftables.ChainTypeFilter, Policy: &policy})
 		for _, r := range s.Rules {
 			if r.Direction != d {
+				continue
+			}
+			if addressSetEligible(r) {
+				for _, family := range []fw.Family{fw.IPv4, fw.IPv6} {
+					if r.Family != fw.Dual && r.Family != family {
+						continue
+					}
+					setID++
+					es, err := addressSet(c, b.table, r, family, setID)
+					if err != nil {
+						return err
+					}
+					if es == nil {
+						continue
+					}
+					es = append(es, &expr.Counter{})
+					es = append(es, verdict(r.Action)...)
+					c.AddRule(&nftables.Rule{Table: b.table, Chain: chain, Exprs: es, UserData: []byte(r.ID)})
+				}
 				continue
 			}
 			for _, term := range r.Terms {

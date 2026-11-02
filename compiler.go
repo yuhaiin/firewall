@@ -76,7 +76,7 @@ func Compile(p Policy, caps Capabilities) (Snapshot, error) {
 	})
 	s := Snapshot{Policy: p}
 	ids := map[string]bool{}
-	nodes, total := 0, 0
+	nodes, total, literalTotal := 0, 0, 0
 	// Validate every zone, including unused definitions and cycles.
 	for _, z := range p.Zones {
 		if _, err := normalize(z.When, false, 0, &nodes, zones); err != nil {
@@ -91,6 +91,9 @@ func Compile(p Policy, caps Capabilities) (Snapshot, error) {
 		if r.Family != Dual && r.Family != IPv4 && r.Family != IPv6 {
 			return bad("explicit IP family required for " + r.ID)
 		}
+		if r.Direction != Inbound && r.Direction != Outbound && r.Direction != Forward {
+			return bad("invalid direction")
+		}
 		if r.Action != Allow && r.Action != Drop && r.Action != Reject && r.Action != Log {
 			return bad("invalid action")
 		}
@@ -100,6 +103,9 @@ func Compile(p Policy, caps Capabilities) (Snapshot, error) {
 		}
 		if r.Disabled {
 			continue
+		}
+		if len(terms) == 0 {
+			return bad("condition never matches: " + r.ID)
 		}
 		if _, ok := p.Defaults[r.Direction]; !ok {
 			return bad("rule direction has no default: " + r.ID)
@@ -111,6 +117,10 @@ func Compile(p Policy, caps Capabilities) (Snapshot, error) {
 			return Snapshot{}, fmt.Errorf("%w: action %s", ErrUnsupported, r.Action)
 		}
 		for _, term := range terms {
+			literalTotal += len(term)
+			if literalTotal > maxNodes {
+				return bad("expanded policy exceeds predicate limit")
+			}
 			if err := validateTerm(term, r); err != nil {
 				return Snapshot{}, fmt.Errorf("rule %s: %w", r.ID, err)
 			}
@@ -182,6 +192,7 @@ func normalize(c Condition, neg bool, depth int, nodes *int, zones map[string]Co
 	}
 	and := (c.Op == "all") != neg
 	var out [][]Literal
+	cost := 0
 	if and {
 		out = [][]Literal{{}}
 	}
@@ -194,6 +205,12 @@ func normalize(c Condition, neg bool, depth int, nodes *int, zones map[string]Co
 			if len(out)+len(v) > maxTerms {
 				return bad("OR expansion limit")
 			}
+			for _, term := range v {
+				cost += len(term)
+			}
+			if cost > maxNodes {
+				return bad("OR predicate expansion limit")
+			}
 			out = append(out, v...)
 			continue
 		}
@@ -201,8 +218,13 @@ func normalize(c Condition, neg bool, depth int, nodes *int, zones map[string]Co
 			return bad("AND expansion limit")
 		}
 		next := make([][]Literal, 0, len(out)*len(v))
+		cost = 0
 		for _, a := range out {
 			for _, b := range v {
+				cost += len(a) + len(b)
+				if cost > maxNodes {
+					return bad("AND predicate expansion limit")
+				}
 				if len(a)+len(b) > 256 {
 					return bad("term exceeds predicate limit")
 				}
@@ -392,6 +414,7 @@ func matchFlow(m Match, f Flow) bool {
 type PolicyDiff struct {
 	Added, Removed, Changed          []string
 	DefaultsChanged, LifetimeChanged bool
+	ZonesChanged                     bool
 }
 
 // Diff compares desired policies without contacting a backend.
@@ -400,6 +423,9 @@ func Diff(a, b Policy) PolicyDiff {
 	x, _ := json.Marshal(a.Defaults)
 	y, _ := json.Marshal(b.Defaults)
 	d.DefaultsChanged = string(x) != string(y)
+	x, _ = json.Marshal(a.Zones)
+	y, _ = json.Marshal(b.Zones)
+	d.ZonesChanged = string(x) != string(y)
 	old := make(map[string]string, len(a.Rules))
 	for _, r := range a.Rules {
 		x, _ := json.Marshal(r)

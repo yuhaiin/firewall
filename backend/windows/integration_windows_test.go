@@ -8,6 +8,7 @@ import (
 	"os"
 	"testing"
 	"time"
+	"unsafe"
 
 	fw "github.com/yuhaiin/firewall"
 )
@@ -62,6 +63,17 @@ func TestNativeWFP(t *testing.T) {
 	conn, err := net.DialTimeout("tcp4", l.Addr().String(), 500*time.Millisecond)
 	if err == nil {
 		conn.Close()
+		key := guid(cfg.Owner, "app-block/ipv4/0")
+		var installed *filter
+		if e := call(filterGet, uintptr(b.handle), uintptr(unsafe.Pointer(&key)), uintptr(unsafe.Pointer(&installed))); e == nil {
+			t.Logf("native filter: layer=%s flags=%x action=%x count=%d weight type=%d", installed.Layer, installed.Flags, installed.Action.Type, installed.Count, installed.Weight.Type)
+			for _, c := range unsafe.Slice(installed.Conditions, installed.Count) {
+				t.Logf("native condition: field=%s op=%d type=%d data=%x", c.Field, c.Op, c.Value.Type, c.Value.Data)
+			}
+			release(&installed)
+		} else {
+			t.Logf("get installed filter: %v", e)
+		}
 		t.Fatal("application WFP drop did not enforce")
 	}
 	state, err := c.Current(t.Context())

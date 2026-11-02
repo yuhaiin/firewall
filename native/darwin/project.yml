@@ -50,7 +50,6 @@ targets:
     sources:
       - Extension
       - FilterDataProvider
-      - FilterControlProvider
       - Shared
       - PolicyKit/Sources/FirewallPolicy
     settings:
@@ -74,7 +73,6 @@ targets:
           NEMachServiceName: $(FIREWALL_MACH_SERVICE)
           NEProviderClasses:
             com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
-            com.apple.networkextension.filter-control: $(PRODUCT_MODULE_NAME).FilterControlProvider
     dependencies:
       - sdk: NetworkExtension.framework
 schemes:

@@ -86,6 +86,18 @@ func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 // validation or installation leaves the previous policy in place. Cancellation
 // before commit aborts; after native commit the committed revision is returned.
 func (c *Client) Apply(ctx context.Context, p Policy) (Revision, error) {
+	return c.apply(ctx, p, false)
+}
+
+// Reconcile explicitly restores the complete desired policy, even when native
+// metadata has the same digest. Use it after external object deletion or an
+// ambiguous commit error. It supersedes the current revision of this owner;
+// unlike Apply, it does not reject a changed generation observed by Inspect.
+func (c *Client) Reconcile(ctx context.Context, p Policy) (Revision, error) {
+	return c.apply(ctx, p, true)
+}
+
+func (c *Client) apply(ctx context.Context, p Policy, reconcile bool) (Revision, error) {
 	if err := c.lock(ctx); err != nil {
 		return Revision{}, err
 	}
@@ -108,18 +120,19 @@ func (c *Client) Apply(ctx context.Context, p Policy) (Revision, error) {
 	if err != nil {
 		return Revision{}, c.failure(err)
 	}
-	if state.Revision != c.revision {
+	if state.Revision != c.revision && !reconcile {
 		return Revision{}, c.failure(ErrDrift)
 	}
-	if state.Active && s.Revision.Digest == state.Revision.Digest {
+	if !reconcile && state.Active && s.Revision.Digest == state.Revision.Digest {
 		c.known = &s.Policy
 		return state.Revision, nil
 	}
-	if c.revision.Generation == math.MaxUint64 {
+	generation := max(c.revision.Generation, state.Revision.Generation)
+	if generation == math.MaxUint64 {
 		return Revision{}, fmt.Errorf("%w: generation exhausted", ErrInvalid)
 	}
-	s.Revision.Generation = c.revision.Generation + 1
-	if err = c.driver.Replace(ctx, c.revision, s); err != nil {
+	s.Revision.Generation = generation + 1
+	if err = c.driver.Replace(ctx, state.Revision, s); err != nil {
 		return Revision{}, c.failure(err)
 	}
 	c.revision = s.Revision
