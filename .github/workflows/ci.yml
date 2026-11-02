@@ -1,0 +1,94 @@
+name: CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+concurrency:
+  group: ci-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  go:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        go: ['1.26.x', '1.27.x']
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache: true
+      - run: go vet ./...
+      - run: go test -race ./...
+      - run: go build ./...
+      - if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          test -z "$(gofmt -l $(git ls-files '*.go'))"
+          go fix ./...
+          git diff --exit-code
+          git diff --check
+  staticcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+      - run: go run honnef.co/go/tools/cmd/staticcheck@latest ./...
+  cross-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+      - shell: bash
+        run: |
+          for os in linux windows darwin; do
+            for arch in amd64 arm64; do
+              GOOS=$os GOARCH=$arch CGO_ENABLED=0 go build ./...
+              GOOS=$os GOARCH=$arch CGO_ENABLED=0 go vet ./...
+            done
+          done
+  linux-enforcement:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+      - name: Compile and test inside disposable namespaces
+        shell: bash
+        run: |
+          go test -c -race -o /tmp/firewall-linux.test ./backend/linux
+          parent_netns=$(readlink /proc/self/ns/net)
+          sudo env FIREWALL_ISOLATED_TEST=1 FIREWALL_PARENT_NETNS="$parent_netns" unshare --net -- /tmp/firewall-linux.test -test.v -test.run TestKernel
+  swift:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path native/darwin/PolicyKit
+      - run: brew install xcodegen
+      - run: xcodegen generate --spec native/darwin/project.yml
+      - name: Build actual host and system extension without signing
+        run: >-
+          xcodebuild -project native/darwin/Firewall.xcodeproj
+          -scheme FirewallHost -configuration Debug
+          -derivedDataPath native/darwin/build
+          CODE_SIGNING_ALLOWED=NO build
+  windows-native:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.x'
+      - name: Native WFP tests with application-scoped filters
+        env:
+          FIREWALL_WFP_TEST: '1'
+        run: go test -v ./backend/windows

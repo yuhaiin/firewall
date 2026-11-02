@@ -1,0 +1,8 @@
+/native/darwin/*.xcodeproj/
+/native/darwin/FirewallHost/Info.plist
+/native/darwin/Extension/Info.plist
+/native/darwin/PolicyKit/.build/
+/native/darwin/build/
+*.test
+*.test.exe
+/firewall-benchmark-results.*/
