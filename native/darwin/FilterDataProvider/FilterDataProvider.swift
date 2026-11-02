@@ -93,8 +93,10 @@ final class FilterDataProvider: NEFilterDataProvider, NSXPCListenerDelegate, Fir
         var code: SecCode?
         guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &code) == errSecSuccess, let code = code,
               SecCodeCheckValidity(code, [], nil) == errSecSuccess else { return nil }
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode = staticCode else { return nil }
         var information: CFDictionary?
-        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+        guard SecCodeCopySigningInformation(staticCode, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
               let values = information as? [String: Any],
               let identifier = values[kSecCodeInfoIdentifier as String] as? String,
               let team = values[kSecCodeInfoTeamIdentifier as String] as? String else { return nil }
