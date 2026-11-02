@@ -21,7 +21,8 @@ Permit is soft; Windows Defender or another provider can still block. No firewal
 product is disabled. ALE_FLOW_ESTABLISHED is not used for general permit/block.
 
 Application predicates call FwpmGetAppIdFromFileName0 for an absolute executable
-path. User predicates require a valid SID and use ALE_USER_ID with a self-relative
+path. The executable must exist; its final long path is resolved to normalize
+8.3 aliases and junctions before generating the WFP identity. User predicates require a valid SID and use ALE_USER_ID with a self-relative
 security descriptor granting FWP_ACTRL_MATCH_FILTER. No PID reuse heuristic is
 used. These identity formats are intentionally platform-specific.
 

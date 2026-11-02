@@ -53,6 +53,9 @@ Go 1.26 or newer:
 go get github.com/yuhaiin/firewall
 ```
 
+Until the initial implementation PR merges, select its branch explicitly:
+`go get github.com/yuhaiin/firewall@codex/cross-platform-firewall`.
+
 - [Linux](docs/linux.md): nftables kernel support, `CAP_NET_ADMIN` in the target
   namespace, private ownership-lock directory. No `nft` CLI dependency.
 - [Windows](docs/windows.md): elevated administrator and BFE; native WFP DLLs.
