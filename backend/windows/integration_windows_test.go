@@ -4,7 +4,9 @@ package windows
 
 import (
 	"errors"
+	"golang.org/x/sys/windows"
 	"net"
+	"net/netip"
 	"os"
 	"testing"
 	"time"
@@ -73,6 +75,27 @@ func TestNativeWFP(t *testing.T) {
 			release(&installed)
 		} else {
 			t.Logf("get installed filter: %v", e)
+		}
+		// Separate application-identity mismatch from loopback arbitration.
+		p.Rules[0].When = fw.All(fw.Is(fw.Match{Field: fw.Protocol, Number: 6}), fw.Is(fw.Match{Field: fw.DestinationPort, Ports: fw.PortRange{First: port, Last: port}}))
+		if _, e := c.Apply(t.Context(), p); e != nil {
+			t.Logf("port-only installation: %v", e)
+		} else {
+			x, e := net.DialTimeout("tcp4", l.Addr().String(), 500*time.Millisecond)
+			if x != nil {
+				x.Close()
+			}
+			t.Logf("port-only loopback verdict: %v", e)
+		}
+		p.Rules[0].When = fw.All(fw.Is(fw.Match{Field: fw.Application, Text: executable}), fw.Is(fw.Match{Field: fw.Protocol, Number: 6}), fw.Is(fw.Match{Field: fw.DestinationPrefix, Prefix: netip.MustParsePrefix("192.0.2.123/32")}))
+		if _, e := c.Apply(t.Context(), p); e != nil {
+			t.Logf("remote installation: %v", e)
+		} else {
+			x, e := net.DialTimeout("tcp4", "192.0.2.123:54321", 500*time.Millisecond)
+			if x != nil {
+				x.Close()
+			}
+			t.Logf("application remote verdict: %v (access denied=%t)", e, errors.Is(e, windows.WSAEACCES))
 		}
 		t.Fatal("application WFP drop did not enforce")
 	}

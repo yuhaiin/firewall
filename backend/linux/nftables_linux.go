@@ -183,7 +183,10 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 	if len(data) > 256 {
 		return fmt.Errorf("%w: ownership marker exceeds kernel userdata limit; shorten owner", fw.ErrInvalid)
 	}
-	c.AddRule(&nftables.Rule{Table: b.table, Chain: meta, UserData: data})
+	// Holding a ct expression registers the namespace's native conntrack hooks
+	// from the first policy onward, including while no explicit state rule is
+	// present. This chain is unhooked and grants no implicit traffic permission.
+	c.AddRule(&nftables.Rule{Table: b.table, Chain: meta, UserData: data, Exprs: []expr.Any{&expr.Ct{Key: expr.CtKeySTATE, Register: 1}}})
 	setID := uint32(0)
 	for _, d := range []fw.Direction{fw.Inbound, fw.Outbound, fw.Forward} {
 		a, ok := s.Policy.Defaults[d]

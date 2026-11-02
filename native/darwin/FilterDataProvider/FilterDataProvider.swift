@@ -1,5 +1,6 @@
 import Foundation
 import NetworkExtension
+import Security
 
 final class FilterDataProvider: NEFilterDataProvider, NSXPCListenerDelegate, FirewallControl {
     private let lock = NSLock()
@@ -80,7 +81,23 @@ final class FilterDataProvider: NEFilterDataProvider, NSXPCListenerDelegate, Fir
         let metadata = Flow(direction: direction, ipv6: socket.socketFamily == AF_INET6,
                             source: source.flatMap { Address($0.hostname) }, destination: destination.flatMap { Address($0.hostname) },
                             sourcePort: source.flatMap { UInt16($0.port) }, destinationPort: destination.flatMap { UInt16($0.port) },
-                            proto: UInt32(socket.socketProtocol), application: flow.sourceAppIdentifier)
+                            proto: UInt32(socket.socketProtocol), application: active.needsApplicationIdentity ? signingIdentity(flow) : nil)
         return active.allows(metadata) ? .allow() : .drop()
+    }
+
+    private func signingIdentity(_ flow: NEFilterFlow) -> String? {
+        // sourceAppIdentifier is unavailable on macOS. Resolve the kernel audit
+        // token through Security.framework, preserving PID-version identity.
+        guard let token = flow.sourceAppAuditToken else { return nil }
+        let attributes = [kSecGuestAttributeAudit as String: token] as CFDictionary
+        var code: SecCode?
+        guard SecCodeCopyGuestWithAttributes(nil, attributes, [], &code) == errSecSuccess, let code = code,
+              SecCodeCheckValidity(code, [], nil) == errSecSuccess else { return nil }
+        var information: CFDictionary?
+        guard SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation), &information) == errSecSuccess,
+              let values = information as? [String: Any],
+              let identifier = values[kSecCodeInfoIdentifier as String] as? String,
+              let team = values[kSecCodeInfoTeamIdentifier as String] as? String else { return nil }
+        return team + "." + identifier
     }
 }

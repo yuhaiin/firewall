@@ -118,9 +118,11 @@ public struct Flow {
 // no file access, synchronous IPC, DNS lookup, or Go evaluation.
 public final class Program {
     public let snapshot: Snapshot
+    public let needsApplicationIdentity: Bool
     private var prefixes: [String: Prefix] = [:]
     public init(_ snapshot: Snapshot) throws {
         try snapshot.validate(); self.snapshot = snapshot
+        needsApplicationIdentity = (snapshot.rules ?? []).contains { rule in rule.terms.contains { term in term.contains { $0.match.field == "application" } } }
         for rule in snapshot.rules ?? [] { for term in rule.terms { for literal in term {
             if let text = literal.match.prefix { prefixes[text] = try Prefix(text) }
         } } }

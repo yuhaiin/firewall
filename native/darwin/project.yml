@@ -75,6 +75,7 @@ targets:
             com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
     dependencies:
       - sdk: NetworkExtension.framework
+      - sdk: Security.framework
 schemes:
   FirewallHost:
     build:

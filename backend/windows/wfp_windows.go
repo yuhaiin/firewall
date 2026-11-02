@@ -164,7 +164,7 @@ func (b *Backend) inspect(ctx context.Context) (fw.NativeState, error) {
 	if err = json.Unmarshal(unsafe.Slice(p.Data.Data, p.Data.Size), &r); err != nil || r.Magic != "yuhaiin/firewall/v1" || r.Owner != b.config.Owner || !r.State.Active || r.State.Revision.Generation == 0 || len(r.State.Revision.Digest) != 64 || r.State.Lifetime != b.config.Lifetime {
 		return fw.NativeState{}, fw.ErrOwnership
 	}
-	if p.Flags&2 != 0 {
+	if p.Flags&0x10 != 0 {
 		return fw.NativeState{}, fmt.Errorf("%w: WFP provider disabled", fw.ErrUnavailable)
 	}
 	var sl *sublayer
