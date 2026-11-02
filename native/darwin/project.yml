@@ -1,0 +1,84 @@
+name: Firewall
+options:
+  deploymentTarget:
+    macOS: "13.0"
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "13.0"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    FIREWALL_HOST_ID: org.yuhaiin.firewall.host
+    FIREWALL_EXTENSION_ID: org.yuhaiin.firewall.extension
+    FIREWALL_APP_GROUP: $(TeamIdentifierPrefix)org.yuhaiin.firewall
+    FIREWALL_MACH_SERVICE: $(TeamIdentifierPrefix)$(FIREWALL_EXTENSION_ID)
+targets:
+  FirewallHost:
+    type: application
+    platform: macOS
+    sources:
+      - FirewallHost
+      - Shared
+      - PolicyKit/Sources/FirewallPolicy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(FIREWALL_HOST_ID)
+        CODE_SIGN_ENTITLEMENTS: FirewallHost/FirewallHost.entitlements
+    info:
+      path: FirewallHost/Info.plist
+      properties:
+        CFBundleName: FirewallHost
+        CFBundleDisplayName: Firewall
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.0"
+        LSUIElement: true
+        NSSystemExtensionUsageDescription: This app installs system firewall policies.
+        FirewallTeamID: $(DEVELOPMENT_TEAM)
+        FirewallAppGroup: $(FIREWALL_APP_GROUP)
+        FirewallHostID: $(FIREWALL_HOST_ID)
+        FirewallExtensionID: $(FIREWALL_EXTENSION_ID)
+        FirewallMachService: $(FIREWALL_MACH_SERVICE)
+    dependencies:
+      - target: FirewallExtension
+        embed: true
+        codeSign: true
+      - sdk: NetworkExtension.framework
+      - sdk: SystemExtensions.framework
+  FirewallExtension:
+    type: system-extension
+    platform: macOS
+    sources:
+      - Extension
+      - FilterDataProvider
+      - FilterControlProvider
+      - Shared
+      - PolicyKit/Sources/FirewallPolicy
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(FIREWALL_EXTENSION_ID)
+        CODE_SIGN_ENTITLEMENTS: Extension/FirewallExtension.entitlements
+        SKIP_INSTALL: YES
+    info:
+      path: Extension/Info.plist
+      properties:
+        CFBundleName: FirewallExtension
+        CFBundleVersion: "1"
+        CFBundleShortVersionString: "0.1.0"
+        NSSystemExtensionUsageDescription: Filters connections using local firewall policies.
+        FirewallTeamID: $(DEVELOPMENT_TEAM)
+        FirewallAppGroup: $(FIREWALL_APP_GROUP)
+        FirewallHostID: $(FIREWALL_HOST_ID)
+        FirewallExtensionID: $(FIREWALL_EXTENSION_ID)
+        FirewallMachService: $(FIREWALL_MACH_SERVICE)
+        NetworkExtension:
+          NEMachServiceName: $(FIREWALL_MACH_SERVICE)
+          NEProviderClasses:
+            com.apple.networkextension.filter-data: $(PRODUCT_MODULE_NAME).FilterDataProvider
+            com.apple.networkextension.filter-control: $(PRODUCT_MODULE_NAME).FilterControlProvider
+    dependencies:
+      - sdk: NetworkExtension.framework
+schemes:
+  FirewallHost:
+    build:
+      targets:
+        FirewallHost: all
