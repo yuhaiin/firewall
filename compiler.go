@@ -289,6 +289,7 @@ func validateTerm(term []Literal, r Rule) error {
 	bad := func(s string) error { return fmt.Errorf("%w: %s", ErrInvalid, s) }
 	proto := -1
 	ports := false
+	prefixFamily := 0
 	for i, a := range term {
 		m := a.Match
 		if m.Field == Protocol && !a.Not {
@@ -296,6 +297,13 @@ func validateTerm(term []Literal, r Rule) error {
 		}
 		if m.Field == SourcePort || m.Field == DestinationPort {
 			ports = true
+		}
+		if !a.Not && (m.Field == SourcePrefix || m.Field == DestinationPrefix) {
+			family := m.Prefix.Addr().BitLen()
+			if prefixFamily != 0 && prefixFamily != family {
+				return bad("source and destination prefixes have different IP families")
+			}
+			prefixFamily = family
 		}
 		if m.Field == InputInterface && r.Direction == Outbound || m.Field == OutputInterface && r.Direction == Inbound {
 			return bad("interface has no meaning at this direction")
@@ -312,6 +320,22 @@ func validateTerm(term []Literal, r Rule) error {
 			}
 			if m == b.Match && a.Not != b.Not {
 				return bad("predicate and its negation")
+			}
+			if a.Not != b.Not {
+				positive, negative := m, b.Match
+				if a.Not {
+					positive, negative = b.Match, m
+				}
+				switch m.Field {
+				case SourcePrefix, DestinationPrefix:
+					if negative.Prefix.Bits() <= positive.Prefix.Bits() && negative.Prefix.Contains(positive.Prefix.Addr()) {
+						return bad("positive prefix excluded by negation")
+					}
+				case SourcePort, DestinationPort:
+					if negative.Ports.First <= positive.Ports.First && negative.Ports.Last >= positive.Ports.Last {
+						return bad("positive ports excluded by negation")
+					}
+				}
 			}
 			if a.Not || b.Not {
 				continue

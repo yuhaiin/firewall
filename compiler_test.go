@@ -34,6 +34,12 @@ func TestValidation(t *testing.T) {
 		"unknown field":     func(p *Policy) { p.Rules[0].When = Is(Match{Field: "typo"}) },
 		"extraneous value":  func(p *Policy) { p.Rules[0].When = Is(Match{Field: Protocol, Number: 6, Text: "ignored?"}) },
 		"missing condition": func(p *Policy) { p.Rules[0].When = Condition{} },
+		"impossible families": func(p *Policy) {
+			p.Rules[0].When = All(p.Rules[0].When, Is(Match{Field: SourcePrefix, Prefix: netip.MustParsePrefix("2001:db8::/32")}))
+		},
+		"excluded prefix": func(p *Policy) {
+			p.Rules[0].When = All(p.Rules[0].When, Not(Is(Match{Field: DestinationPrefix, Prefix: netip.MustParsePrefix("0.0.0.0/0")})))
+		},
 		"nesting": func(p *Policy) {
 			for range 34 {
 				p.Rules[0].When = Not(p.Rules[0].When)

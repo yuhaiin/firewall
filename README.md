@@ -41,7 +41,7 @@ never silently dropped. See each platform's narrower combination restrictions.
 
 Application → portable policy → validator / bounded compiler → native backend.
 The portable evaluator is for diagnostics/tests; it does not intercept packets.
-Linux and Windows need no CGO. macOS invokes a minimal signed Swift host for
+Linux and Windows need no CGO. macOS invokes a minimal signed root Swift host for
 control operations; native providers evaluate flows using immutable local rules.
 There is no Go callback per packet, routing modification, or payload collection.
 
@@ -58,7 +58,7 @@ go get github.com/yuhaiin/firewall
 - [Windows](docs/windows.md): elevated administrator and BFE; native WFP DLLs.
   Persistent policies require an installed automatic-start service.
 - [macOS](docs/macos.md): Xcode, generated project, Network Extension entitlements,
-  matching signing identities/app group, installed host, system/user approval.
+  matching signing identities/app group, root host/client, system/user approval.
 
 ## Go API
 
@@ -136,6 +136,9 @@ Zones expand named expressions and never grant trust by themselves.
 - `Close` releases handles and performs platform-specific temporary cleanup.
   It never deletes a persistent kill switch.
 - `Remove` explicitly removes only owned enforcement. It is idempotent.
+- `Reconcile` explicitly reinstalls desired enforcement even when the digest is
+  unchanged. Use it to repair externally deleted rules; `Current` reads revision
+  metadata and is not a full ruleset audit.
 - Recovery reads native owner/generation metadata. `Current.Policy` is nil until
   desired policy is supplied again. Persist source policies in the application.
 - This version has no separate disable/enable operation: replace with an explicit

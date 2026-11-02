@@ -95,12 +95,12 @@ final class Host {
                 let stored = try Store.read()
                 guard stored.owner == request.owner else { throw PolicyError.ownership }
                 guard stored.snapshot.revision == request.expected else { throw PolicyError.drift }
-                    self.manager.removeFromPreferences { error in
-                        if let error = error { finish(.failure(error)) }
-                        do { let url = try Store.url(); if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }; finish(Response()) }
-                        catch { finish(.failure(error)) }
-                    }
-                }; return
+                self.manager.removeFromPreferences { error in
+                    if let error = error { finish(.failure(error)) }
+                    do { let url = try Store.url(); if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }; finish(Response()) }
+                    catch { finish(.failure(error)) }
+                }
+                return
             }
             guard request.command == "replace", let snapshot = request.snapshot else { throw PolicyError.unsupported }
             try snapshot.validate()

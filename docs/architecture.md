@@ -37,7 +37,8 @@ connection events are not collected in this implementation; unsupported
 observability features are accurately exposed through capabilities.
 
 Reconciliation is explicit: `Current` detects revision drift, and a new handle
-recovers installed generation metadata without deleting protection. Reapply the
-application's desired source to converge. There is no background agent silently
+recovers installed generation metadata without deleting protection. Use Reconcile with the
+application's desired source to force complete native reinstallation, even if
+metadata is unchanged after a native filter was externally deleted. There is no background agent silently
 restoring policy against administrator intent. Revision metadata alone cannot
 detect arbitrary administrator edits inside an owned table/provider.

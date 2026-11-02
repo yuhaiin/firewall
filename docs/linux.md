@@ -25,7 +25,8 @@ inside it. Ownership IDs should be short enough for the 256-byte marker limit.
 Rules use input, output and forward inet base chains at configurable priority.
 Each family is explicit before payload loads. L4PROTO resolves IPv6 extension
 headers; TCP/UDP port reads use the transport header. Prefixes use native
-payload/mask comparisons; counters are native. Interface names follow recreated
+payload/mask comparisons; OR lists of singleton addresses use a native set
+lookup per family; counters are native. Interface names follow recreated
 interfaces by name (not a stable hardware identity); names are exact, <=15 bytes.
 Socket UID is output-only, not PID/application identity. User rules on inbound
 or forwarded packets return unsupported. ICMP/ICMPv6 require explicit matching

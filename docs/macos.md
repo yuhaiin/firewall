@@ -1,7 +1,9 @@
 # macOS Network Extension
 
 The implementation uses a Swift host application and a real system extension
-with NEFilterDataProvider plus a minimal NEFilterControlProvider. The Go backend
+with NEFilterDataProvider. NEFilterControlProvider and handleRulesChanged are
+explicitly unavailable in the macOS SDK; the signed host supplies the control
+role through the declared authenticated Mach endpoint. The Go backend
 executes the signed host only for control operations. No PF fallback, KEXT, TUN,
 per-packet Go callback, or remote flow decision is used.
 
@@ -36,12 +38,19 @@ extension/host with matching team requirements. Developer ID distribution also
 requires the appropriate profiles, hardened runtime and notarization; consult
 [Apple's system extension deployment documentation](https://developer.apple.com/system-extensions/).
 
+This version requires the Go client and signed control host to run as root.
+System extensions run as root and app-group containers are per-user, so a GUI-user
+host would write to a different container. The API rejects that deployment rather
+than assuming containers are shared across UIDs. A GUI integration needs a
+separately authorized privileged helper; this repository does not install one.
+See [Apple DTS on container identity](https://developer.apple.com/forums/thread/133761).
+
 Install FirewallHost.app under /Applications. From its Contents/MacOS executable,
 submit an explicit activation request (GUI login session required):
 
 ```sh
 printf '%s' '{"command":"activate","owner":"firewall-example","expected":{"generation":0,"digest":""}}' \
-  | /Applications/FirewallHost.app/Contents/MacOS/FirewallHost
+  | sudo /Applications/FirewallHost.app/Contents/MacOS/FirewallHost
 ```
 
 Approve the extension and content filter when macOS requests it. Some upgrades
@@ -67,8 +76,8 @@ also validates the extension peer. No PID-based application policy is used. IPC
 carries only control commands/revisions; no packet payload or flow content leaves
 the provider. Signed deployment must validate that this declared control endpoint
 and app-group reads are allowed under the actual OS sandbox/provisioning profile.
-The optional control provider emits rules-changed notifications where instantiated;
-macOS correctness does not depend on that provider being launched.
+Updates use acknowledged snapshot-reload IPC; the unavailable iOS control-provider
+API is not declared in the macOS extension manifest.
 
 Apply waits for the data provider's active revision reply. A file write/preferences
 save alone never returns successful installation. If activation/IPC fails, an
