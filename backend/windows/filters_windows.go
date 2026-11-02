@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"unsafe"
 
 	fw "github.com/yuhaiin/firewall"
@@ -138,7 +139,11 @@ func compileTerm(a *arena, term []fw.Literal, d fw.Direction, family fw.Family) 
 			if !filepath.IsAbs(m.Text) {
 				return nil, false, fmt.Errorf("%w: WFP application requires an absolute executable path", fw.ErrInvalid)
 			}
-			path := text(m.Text)
+			canonical, err := canonicalApplication(m.Text)
+			if err != nil {
+				return nil, false, fmt.Errorf("application path: %w", err)
+			}
+			path := text(canonical)
 			var id *blob
 			if err := call(getAppID, uintptr(unsafe.Pointer(path)), uintptr(unsafe.Pointer(&id))); err != nil {
 				return nil, false, wrap(err)
@@ -176,4 +181,37 @@ func compileTerm(a *arena, term []fw.Literal, d fw.Direction, family fw.Family) 
 		out = append(out, c)
 	}
 	return out, true, nil
+}
+
+// Resolve short (8.3) names and junctions before asking WFP for an app ID.
+// Go build/test paths may use RUNNER~1 while the kernel attributes the process
+// to its normalized long device path. Those blobs are not interchangeable.
+func canonicalApplication(path string) (string, error) {
+	name, err := windows.UTF16PtrFromString(path)
+	if err != nil {
+		return "", err
+	}
+	handle, err := windows.CreateFile(name, windows.FILE_READ_ATTRIBUTES, windows.FILE_SHARE_READ|windows.FILE_SHARE_WRITE|windows.FILE_SHARE_DELETE, nil, windows.OPEN_EXISTING, windows.FILE_ATTRIBUTE_NORMAL, 0)
+	if err != nil {
+		return "", err
+	}
+	defer windows.CloseHandle(handle)
+	size := uint32(512)
+	for size <= 32768 {
+		buffer := make([]uint16, size)
+		n, err := windows.GetFinalPathNameByHandle(handle, &buffer[0], size, 0)
+		if err != nil {
+			return "", err
+		}
+		if n >= size {
+			size = n + 1
+			continue
+		}
+		full := windows.UTF16ToString(buffer[:n])
+		if strings.HasPrefix(full, `\\?\UNC\`) {
+			return `\\` + strings.TrimPrefix(full, `\\?\UNC\`), nil
+		}
+		return strings.TrimPrefix(full, `\\?\`), nil
+	}
+	return "", fmt.Errorf("%w: application path too long", fw.ErrInvalid)
 }

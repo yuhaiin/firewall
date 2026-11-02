@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/nftables"
 	"github.com/google/nftables/expr"
+	"github.com/mdlayher/netlink"
 	fw "github.com/yuhaiin/firewall"
 	"golang.org/x/sys/unix"
 )
@@ -170,7 +171,17 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 	if state.Revision != expected {
 		return fw.ErrDrift
 	}
-	c := &nftables.Conn{}
+	c, err := nftables.New(nftables.WithSockOptions(func(nc *netlink.Conn) error {
+		// The OS may cap these requests. Large batches then fail atomically
+		// with the native socket error rather than being split into commits.
+		if err := nc.SetReadBuffer(16 << 20); err != nil {
+			return err
+		}
+		return nc.SetWriteBuffer(16 << 20)
+	}))
+	if err != nil {
+		return err
+	}
 	if state.Active {
 		c.DelTable(b.table)
 	}

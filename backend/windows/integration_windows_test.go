@@ -72,6 +72,7 @@ func TestNativeWFP(t *testing.T) {
 			for _, c := range unsafe.Slice(installed.Conditions, installed.Count) {
 				t.Logf("native condition: field=%s op=%d type=%d data=%x", c.Field, c.Op, c.Value.Type, c.Value.Data)
 			}
+			t.Logf("executable=%s", executable)
 			release(&installed)
 		} else {
 			t.Logf("get installed filter: %v", e)
