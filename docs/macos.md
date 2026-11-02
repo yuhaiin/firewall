@@ -81,13 +81,16 @@ API is not declared in the macOS extension manifest.
 
 Apply waits for the data provider's active revision reply. A file write/preferences
 save alone never returns successful installation. If activation/IPC fails, an
-error is returned; prior valid stored policy is retained/restored when possible.
+error is returned; definite initial preference-save failure rolls back storage after readback.
+A lost reload reply retains the proposed durable snapshot, since the provider may
+already have committed. Reconcile compares the live revision independently of
+storage and repairs either interrupted write/reload order.
 A helper/acknowledgement failure is an ambiguous commit, not proof that no policy
 changed: inspect/reconcile. Existing allowed flows are not forcibly terminated
 on policy update. New-flow decisions use the current complete program.
 
 TCP/UDP inbound/outbound flow policies, numeric IPv4/IPv6 prefixes, ports and source
-app signing identifier are supported in source. Missing endpoints/identity can
+app identity as TEAM_ID.signing_identifier from the kernel audit token and Security.framework are supported in source. Missing endpoints/identity can
 prevent precise rule matching; potentially relevant unknown metadata is denied.
 Only persistent/system-managed lifetime is available. Forwarding, packet marks,
 interface/UID conditions, ICMP-specific policy, Reject, Log, counters and native

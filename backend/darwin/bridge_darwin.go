@@ -174,7 +174,11 @@ func (b *Backend) invoke(ctx context.Context, r request) (response, error) {
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	if err = cmd.Run(); err != nil {
-		return response{}, fmt.Errorf("%w: signed host: %v: %s", fw.ErrUnavailable, err, stderr.String())
+		kind := fw.ErrUnavailable
+		if r.Command == "replace" || r.Command == "remove" {
+			kind = fw.ErrIndeterminate
+		}
+		return response{}, fmt.Errorf("%w: signed host: %w: %s", kind, err, stderr.String())
 	}
 	var result response
 	dec := json.NewDecoder(&out)
@@ -198,6 +202,8 @@ func (b *Backend) invoke(ctx context.Context, r request) (response, error) {
 			kind = fw.ErrPermission
 		case "unsupported":
 			kind = fw.ErrUnsupported
+		case "indeterminate":
+			kind = fw.ErrIndeterminate
 		}
 		return response{}, fmt.Errorf("%w: %s", kind, result.Error)
 	}

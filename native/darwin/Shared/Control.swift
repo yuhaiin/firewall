@@ -31,6 +31,11 @@ struct Response: Codable {
         }
         return result
     }
+    static func uncertain(_ error: Error) -> Response {
+        var result = failure(error)
+        result.code = "indeterminate"
+        return result
+    }
     func data() -> Data { (try? JSONEncoder().encode(self)) ?? Data("{\"error\":\"response encoding failed\"}".utf8) }
 }
 

@@ -83,7 +83,9 @@ func (c *Client) Capabilities(ctx context.Context) (Capabilities, error) {
 }
 
 // Apply compiles the entire policy before a native atomic replacement. Failed
-// validation or installation leaves the previous policy in place. Cancellation
+// validation or native rejection leaves the previous policy in place. Transport
+// failures may have an indeterminate outcome; inspect/reconcile before retrying.
+// Cancellation
 // before commit aborts; after native commit the committed revision is returned.
 func (c *Client) Apply(ctx context.Context, p Policy) (Revision, error) {
 	return c.apply(ctx, p, false)

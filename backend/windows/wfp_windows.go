@@ -198,7 +198,7 @@ func (b *Backend) transaction(ctx context.Context, fn func() error) error {
 		return err
 	}
 	if err := call(txnCommit, uintptr(b.handle)); err != nil {
-		return wrap(err)
+		return errors.Join(fw.ErrIndeterminate, wrap(err))
 	}
 	committed = true
 	return nil

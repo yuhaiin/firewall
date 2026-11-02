@@ -11,7 +11,7 @@ Locks coordinate this library's writers, not arbitrary administrative tools.
 | Backend unavailable or permission denied at startup | Return error; install/remove nothing |
 | Invalid/unsupported policy | Return error before transaction; old enforcement remains |
 | Native policy rejection | Abort native transaction; old enforcement remains |
-| Lost commit acknowledgement / helper crash | Outcome can be uncertain; inspect/reopen/reconcile before retrying |
+| Lost commit acknowledgement / helper crash | Linux confirms the atomic marker by readback where possible; otherwise ErrIndeterminate and inspect/reconcile before retrying |
 | Main process crash | Linux rules remain; dynamic WFP is removed by OS; persistent WFP and macOS configuration remain |
 | macOS provider crash | OS manages restart; no claim of guaranteed blocking during restart |
 | Corrupt native metadata | Refuse ownership/recovery, do not flush protection |
@@ -47,6 +47,7 @@ Allow. No payload inspection or domain-name policy resolution is implemented.
 
 Native cancellation is checked before commit; it cannot undo an acknowledged
 commit or reliably interrupt every synchronous OS call. The application must
-inspect state after ambiguous errors. Current revision drift is explicit; recover
+inspect state after ambiguous errors. Reconcile always replaces the full owned
+policy, including when metadata remains unchanged after external filter deletion. Current revision drift is explicit; recover
 using a new owner handle and the stored desired policy rather than overwriting
 another generation blindly.

@@ -36,7 +36,10 @@ log destination and is not a connection event subscription.
 Replacement deletes/recreates **only the owned table in one nftables batch**.
 The kernel exposes the old or the complete new ruleset; it never sees an empty
 interval from those operations. Kernel rejection rolls back the entire batch.
-Counters reset on replacement. `Counters` aggregates expanded alternatives by
+Large batches can overflow acknowledgement buffers even after a successful
+commit. The backend reads back the marker from that same atomic batch to confirm
+success. If neither the old nor proposed revision can be confirmed, it reports
+ErrIndeterminate; inspect/reconcile before retrying. Counters reset on replacement. `Counters` aggregates expanded alternatives by
 portable rule ID. Log and overlapping OR alternatives can count a packet more
 than once; these are rule-hit counters, not unique connection statistics.
 
@@ -46,8 +49,9 @@ DROP. A dedicated namespace test simulates another firewall's later drop chain.
 Actual product-version interoperability is a separate deployment test.
 
 Conntrack is the kernel's tracker. Explicit state predicates support NEW,
-ESTABLISHED, RELATED, INVALID and UNTRACKED. No implicit allow-established rule
-exists: new policy applies on the next packet, subject to host offload/capture
+ESTABLISHED, RELATED, INVALID and UNTRACKED. An unhooked metadata-chain ct expression holds native tracking active from the
+first policy, including policies without explicit state predicates. It does not
+permit any traffic. No implicit allow-established rule exists: new policy applies on the next packet, subject to host offload/capture
 behavior. Dropping packets does not issue TCP resets or remove conntrack entries.
 Do not promise immediate connection termination. Integration tests must account
 for cached/offloaded forwarding outside these hooks in the deployment environment.
@@ -64,3 +68,8 @@ Run native tests using `sh scripts/test-linux.sh`. The script creates a fresh
 user/network namespace and checks its identity before installing rules. It never
 tests against the host network namespace. Tests use `ip` only to set up isolated
 test links; the library itself uses direct Netlink.
+
+A handle is scoped to the process network namespace where it is opened. Keep
+that namespace stable throughout use; this API does not manage thread-local
+setns transitions or migrate an owner between namespaces. Use a separate process
+per namespace for isolated management.

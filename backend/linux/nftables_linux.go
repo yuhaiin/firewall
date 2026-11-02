@@ -260,7 +260,22 @@ func (b *Backend) Replace(ctx context.Context, expected fw.Revision, s fw.Snapsh
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	return wrap(c.Flush())
+	if err := c.Flush(); err != nil {
+		// Large atomic batches can overflow acknowledgement buffering after
+		// successful kernel commit. The generation marker is in that same
+		// batch, so readback can confirm success without retrying installation.
+		verify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		actual, readErr := b.inspect(verify)
+		if readErr == nil && actual.Active && actual.Revision == s.Revision {
+			return nil
+		}
+		if readErr == nil && actual.Revision == expected {
+			return wrap(err)
+		}
+		return errors.Join(fw.ErrIndeterminate, wrap(err), readErr)
+	}
+	return nil
 }
 
 // Remove deletes only the table whose metadata matches this owner/revision.
@@ -285,7 +300,19 @@ func (b *Backend) remove(ctx context.Context, r fw.Revision) error {
 	if err = ctx.Err(); err != nil {
 		return err
 	}
-	return wrap(c.Flush())
+	if err := c.Flush(); err != nil {
+		verify, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		actual, readErr := b.inspect(verify)
+		if readErr == nil && !actual.Active {
+			return nil
+		}
+		if readErr == nil && actual.Revision == r {
+			return wrap(err)
+		}
+		return errors.Join(fw.ErrIndeterminate, wrap(err), readErr)
+	}
+	return nil
 }
 
 // Close removes temporary policies and releases the advisory lock. A crash

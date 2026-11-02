@@ -76,29 +76,53 @@ final class Host {
             }
             if request.command == "inspect" {
                 if !manager.isEnabled {
-                    if FileManager.default.fileExists(atPath: try Store.url().path) { throw PolicyError.drift }
+                    if FileManager.default.fileExists(atPath: try Store.url().path) {
+                        let stored = try Store.read()
+                        guard stored.owner == request.owner else { throw PolicyError.ownership }
+                        finish(Response(state: NativeState(active: false, revision: stored.snapshot.revision, lifetime: "persistent")))
+                    }
                     finish(Response())
                 }
                 rpc("inspect", completion: finishResponse); return
             }
             if request.command == "remove" {
                 if !manager.isEnabled && manager.providerConfiguration == nil {
-                    guard request.expected == .absent else { throw PolicyError.drift }
                     if let orphan = try? Store.read() {
                         guard orphan.owner == request.owner else { throw PolicyError.ownership }
+                        guard orphan.snapshot.revision == request.expected else { throw PolicyError.drift }
                         try FileManager.default.removeItem(at: Store.url())
-                    }
+                    } else if request.expected != .absent { throw PolicyError.drift }
                     finish(Response())
                 }
                 // Explicit removal must remain possible when the provider is
                 // restarting or cannot answer IPC. Compare owned stored state.
-                let stored = try Store.read()
-                guard stored.owner == request.owner else { throw PolicyError.ownership }
-                guard stored.snapshot.revision == request.expected else { throw PolicyError.drift }
-                self.manager.removeFromPreferences { error in
-                    if let error = error { finish(.failure(error)) }
-                    do { let url = try Store.url(); if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }; finish(Response()) }
-                    catch { finish(.failure(error)) }
+                let remove = {
+                    self.manager.removeFromPreferences { error in
+                        if let error = error { finish(.failure(error)) }
+                        do {
+                            let url = try Store.url()
+                            if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+                            finish(Response())
+                        } catch { finish(.uncertain(error)) }
+                    }
+                }
+                if manager.isEnabled {
+                    rpc("inspect") { response in
+                        if response.error.isEmpty {
+                            guard response.state.revision == self.request.expected else { finish(.failure(PolicyError.drift)) }
+                        } else {
+                            // Recovery without a live provider uses only the
+                            // owned durable revision, never an unrelated config.
+                            guard let stored = try? Store.read(), stored.owner == self.request.owner,
+                                  stored.snapshot.revision == self.request.expected else { finish(response) }
+                        }
+                        remove()
+                    }
+                } else {
+                    let stored = try Store.read()
+                    guard stored.owner == request.owner else { throw PolicyError.ownership }
+                    guard stored.snapshot.revision == request.expected else { throw PolicyError.drift }
+                    remove()
                 }
                 return
             }
@@ -106,13 +130,15 @@ final class Host {
             try snapshot.validate()
             let previous = try? Store.read()
             if let previous = previous { guard previous.owner == request.owner else { throw PolicyError.ownership } }
-            guard (previous?.snapshot.revision ?? .absent) == request.expected else { throw PolicyError.drift }
             if manager.isEnabled {
                 rpc("inspect") { response in
                     guard response.error.isEmpty, response.state.revision == self.request.expected else { finish(response.error.isEmpty ? .failure(PolicyError.drift) : response) }
                     self.install(snapshot, previous: previous)
                 }
-            } else { install(snapshot, previous: previous) }
+            } else {
+                guard (previous?.snapshot.revision ?? .absent) == request.expected else { throw PolicyError.drift }
+                install(snapshot, previous: previous)
+            }
         } catch { finish(.failure(error)) }
     }
 
@@ -121,12 +147,11 @@ final class Host {
             try Store.write(StoredPolicy(owner: request.owner, snapshot: snapshot))
             let reload = {
                 self.rpc("reload") { response in
-                    if !response.error.isEmpty {
-                        // Do not delete or disable existing protection on IPC
-                        // failure. The result may be ambiguous after a crash;
-                        // callers must Inspect/reconcile before retrying.
-                        if let previous = previous { try? Store.write(previous) }
-                    }
+                    // Retain the proposed durable snapshot on a lost reply.
+                    // Reverting storage could diverge from a committed program.
+                    // Enabled-manager reconciliation compares the live provider
+                    // revision separately and repairs either interrupted order.
+                    if !response.error.isEmpty { var uncertain = response; uncertain.code = "indeterminate"; finish(uncertain) }
                     finish(response)
                 }
             }
@@ -140,9 +165,14 @@ final class Host {
             manager.isEnabled = true
             manager.saveToPreferences { error in
                 if let error = error {
-                    do { try self.rollbackStorage(previous) }
-                    catch { finish(.failure(error)) }
-                    finish(.failure(error))
+                    self.manager.loadFromPreferences { readError in
+                        if let readError = readError { finish(.uncertain(readError)) }
+                        guard !self.manager.isEnabled else { finish(.uncertain(error)) }
+                        do { try self.rollbackStorage(previous) }
+                        catch { finish(.uncertain(error)) }
+                        finish(.failure(error))
+                    }
+                    return
                 }
                 // Initial activation can need user approval. Retry is bounded;
                 // Apply never returns success without the data-provider reply.

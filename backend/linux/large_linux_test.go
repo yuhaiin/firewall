@@ -27,7 +27,7 @@ func TestKernelLargePolicies(t *testing.T) {
 			}
 			if _, err := c.Apply(t.Context(), p); err != nil {
 				if errors.Is(err, unix.EMSGSIZE) || errors.Is(err, unix.ENOBUFS) {
-					t.Skipf("kernel Netlink buffer limit (old policy preserved): %v", err)
+					t.Skipf("kernel rejected batch at its Netlink buffer limit: %v", err)
 				}
 				t.Fatal(err)
 			}

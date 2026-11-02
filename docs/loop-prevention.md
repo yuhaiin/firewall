@@ -29,11 +29,11 @@ and transport reconnection stay in the host application.
 | VPN's own transport | Same TCP/UDP and mark conditions | WireGuard/Tailscale/GlobalProtect control channels |
 | Local DNS proxy | Local UDP echo allow/drop (same transport semantics) | Resolver behavior, upstream identity and DNS routing |
 | Localhost | IPv4/IPv6 real loopback TCP/UDP | Service management exceptions chosen by caller |
-| LAN → VPN forwarding | Isolated routing test where available | Real VPN offload and network topology |
+| LAN → VPN forwarding | Real three-namespace IPv4/IPv6 TCP/UDP test | Real VPN offload and network topology |
 | IPv6 | Real loopback TCP/UDP and native family rules | Neighbor Discovery, router advertisements, tunnel MTU |
 | Nested proxies | No blanket proxy/process exemption | Each hop's socket mark and destination policy |
-| Reconnect / interface changes | Name predicates compile; update transactions | Real reconnect events, rename/recreation and route updates |
-| Policy update with active traffic | Atomic native replacement and conntrack predicates | Existing-flow semantics differ by OS; no forced TCP teardown |
+| Reconnect / interface changes | Live veth rename, predicate update and atomic replacement | Real reconnect events, rename/recreation and route updates |
+| Policy update with active traffic | Active forwarded TCP with explicit ESTABLISHED allow then removal | Existing-flow semantics differ by OS; no forced TCP teardown |
 | Firewall restart with active TUN | Persistent policy recovery without initial flush | Actual live TUN deployment and startup ordering |
 
 Do not call these unit/native transport tests a successful end-to-end VPN test.

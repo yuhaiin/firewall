@@ -11,13 +11,14 @@ import (
 
 // Stable errors can be inspected with errors.Is.
 var (
-	ErrInvalid     = errors.New("invalid firewall policy")
-	ErrUnsupported = errors.New("unsupported firewall capability")
-	ErrClosed      = errors.New("firewall handle is closed")
-	ErrOwnership   = errors.New("native firewall ownership conflict")
-	ErrUnavailable = errors.New("native firewall unavailable")
-	ErrPermission  = errors.New("insufficient firewall permission")
-	ErrDrift       = errors.New("native policy differs from expected revision")
+	ErrInvalid       = errors.New("invalid firewall policy")
+	ErrUnsupported   = errors.New("unsupported firewall capability")
+	ErrClosed        = errors.New("firewall handle is closed")
+	ErrOwnership     = errors.New("native firewall ownership conflict")
+	ErrUnavailable   = errors.New("native firewall unavailable")
+	ErrPermission    = errors.New("insufficient firewall permission")
+	ErrDrift         = errors.New("native policy differs from expected revision")
+	ErrIndeterminate = errors.New("native commit outcome could not be confirmed")
 )
 
 // Action is a terminating decision, except Log which continues to the next rule.
@@ -209,7 +210,8 @@ type PolicyState struct {
 }
 
 // Driver is the platform boundary. Replace must atomically compare Expected and
-// install Snapshot, or preserve the old policy on failure. Remove affects only
+// install Snapshot, or preserve the old policy on native rejection. If commit
+// acknowledgement cannot be confirmed, return ErrIndeterminate. Remove affects only
 // owned objects. Close releases handles and removes temporary objects only.
 // A driver is owned by one Client and must serialize cross-process writers.
 type Driver interface {

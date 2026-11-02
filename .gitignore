@@ -5,3 +5,4 @@
 /native/darwin/build/
 *.test
 *.test.exe
+/firewall-benchmark-results.*/
